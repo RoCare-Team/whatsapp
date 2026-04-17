@@ -120,11 +120,25 @@ export default function InboxPage() {
                   ${m.direction === 'outbound'
                     ? 'bg-whatsapp-light text-gray-800 rounded-br-sm'
                     : 'bg-white text-gray-800 rounded-bl-sm border border-gray-100'}`}>
-                  <p className="break-words">{m.content}</p>
+
+                  {/* Template badge */}
+                  {m.type === 'template' && (
+                    <p className="text-xs text-whatsapp-teal font-medium mb-1 flex items-center gap-1">
+                      📋 Template
+                    </p>
+                  )}
+
+                  {/* Button reply badge */}
+                  {m.type === 'button' && (
+                    <p className="text-xs text-blue-500 font-medium mb-1">🔘 Button Reply</p>
+                  )}
+
+                  <p className="break-words whitespace-pre-wrap">{m.content}</p>
+
                   <p className={`text-xs mt-1 ${m.direction === 'outbound' ? 'text-gray-500 text-right' : 'text-gray-400'}`}>
                     {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     {m.direction === 'outbound' && (
-                      <span className="ml-1">
+                      <span className={`ml-1 ${m.status === 'read' ? 'text-blue-500' : ''}`}>
                         {m.status === 'read' ? '✓✓' : m.status === 'delivered' ? '✓✓' : '✓'}
                       </span>
                     )}

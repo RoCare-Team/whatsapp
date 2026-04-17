@@ -90,12 +90,20 @@ export async function POST(
 
     const wamid = (result?.messages as Record<string, unknown>[])?.[0]?.id as string | undefined;
 
+    // Build display content: body_text with variables replaced, fallback to template name
+    let displayContent = (campaign.body_text as string) || (campaign.template_name as string);
+    if (variables && displayContent) {
+      for (const [k, v] of Object.entries(variables)) {
+        displayContent = displayContent.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), v);
+      }
+    }
+
     // ── Store message row (enables webhook delivery tracking) ─
     const msgId = await insert(
       `INSERT INTO messages
          (workspace_id, contact_id, wamid, direction, type, content, campaign_id, status, sent_at)
        VALUES (?, ?, ?, 'outbound', 'template', ?, ?, 'sent', NOW())`,
-      [payload.workspaceId, contactId, wamid || null, campaign.template_name, campaignId]
+      [payload.workspaceId, contactId, wamid || null, displayContent, campaignId]
     );
 
     // ── Add campaign_contacts entry (enables contact list + status tracking) ─

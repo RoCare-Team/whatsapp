@@ -89,11 +89,22 @@ export async function POST(req: NextRequest) {
       contactId = contact[0].id as number;
     }
 
+    // Extract readable content based on message type
+    let content = '';
+    if (msg.type === 'text')     content = msg.text || '';
+    else if (msg.type === 'button') content = msg.button?.text || msg.button?.payload || 'Button reply';
+    else if (msg.type === 'image')  content = '📷 Image';
+    else if (msg.type === 'audio')  content = '🎵 Audio';
+    else if (msg.type === 'video')  content = '🎥 Video';
+    else if (msg.type === 'document') content = '📄 Document';
+    else if (msg.type === 'interactive') content = '📋 Interactive reply';
+    else content = msg.type;
+
     // Store message
     await insert(
       `INSERT IGNORE INTO messages (workspace_id, contact_id, wamid, direction, type, content, status, sent_at)
        VALUES (?, ?, ?, 'inbound', ?, ?, 'delivered', FROM_UNIXTIME(?))`,
-      [workspaceId, contactId, msg.wamid, msg.type, msg.text || JSON.stringify(msg), msg.timestamp]
+      [workspaceId, contactId, msg.wamid, msg.type, content, msg.timestamp]
     );
 
     // ---- Chatbot: match rules ----
@@ -125,20 +136,29 @@ export async function POST(req: NextRequest) {
         [status.wamid]
       );
       if (msgRows.length > 0 && msgRows[0].campaign_id) {
-        const msgId    = msgRows[0].id as number;
-        const campId   = msgRows[0].campaign_id as number;
+        const msgId  = msgRows[0].id as number;
+        const campId = msgRows[0].campaign_id as number;
 
-        // Update campaign_contacts row
-        await execute(
-          `UPDATE campaign_contacts SET status = ? WHERE message_id = ?`,
-          [status.status, msgId]
+        // Only update if status is actually changing (prevents duplicate webhook double-count)
+        // Status order: pending < sent < delivered < read
+        const statusOrder: Record<string, number> = { pending: 0, sent: 1, delivered: 2, read: 3, failed: 4 };
+        const newOrder = statusOrder[status.status] ?? 0;
+
+        const affected = await execute(
+          `UPDATE campaign_contacts SET status = ?
+           WHERE message_id = ? AND (
+             FIELD(status, 'pending','sent','delivered','read','failed') < ?
+           )`,
+          [status.status, msgId, newOrder + 1]
         );
 
-        // Increment campaign counter (avoid double-counting: only if previous status was lower)
-        await execute(
-          `UPDATE campaigns SET ${col} = ${col} + 1 WHERE id = ?`,
-          [campId]
-        );
+        // Only increment campaign counter if row actually changed
+        if (affected > 0) {
+          await execute(
+            `UPDATE campaigns SET ${col} = ${col} + 1 WHERE id = ?`,
+            [campId]
+          );
+        }
       }
     }
   }

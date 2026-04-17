@@ -128,6 +128,7 @@ export interface IncomingMessage {
   document?:  object;
   video?:     object;
   interactive?: object;
+  button?:    { text: string; payload: string };
 }
 
 export interface StatusUpdate {
@@ -153,6 +154,7 @@ export function parseWebhookBody(body: Record<string, unknown>): {
     // Inbound messages
     const msgs = (value?.messages as Record<string, unknown>[]) ?? [];
     for (const m of msgs) {
+      const btn = m.button as Record<string, unknown> | undefined;
       result.messages.push({
         wamid:     m.id as string,
         from:      m.from as string,
@@ -164,6 +166,7 @@ export function parseWebhookBody(body: Record<string, unknown>): {
         document:  m.document as object,
         video:     m.video as object,
         interactive: m.interactive as object,
+        button:    btn ? { text: btn.text as string, payload: btn.payload as string } : undefined,
       });
     }
 
