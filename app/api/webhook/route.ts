@@ -194,7 +194,7 @@ async function processChatbot(
           [workspaceId, contactId, wamid, rule.response_text]
         );
       }
-      break; // Stop after first match
+      break;
     }
   }
 }

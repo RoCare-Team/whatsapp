@@ -331,10 +331,29 @@ export default function CampaignDetailPage() {
 }
 
 // ── Test Campaign Panel ────────────────────────────────────────
+// Default values for common variable positions
+const VAR_DEFAULTS: Record<string, string> = {
+  '1': '$FirstName',
+  '2': '$LastName',
+  '3': '$Phone',
+  '4': '$Email',
+  '5': '$CompanyName',
+};
+
+function buildDefaultVars(bodyText: string): string {
+  const matches = bodyText?.match(/\{\{(\d+)\}\}/g) || [];
+  const nums    = [...new Set(matches.map((m) => m.replace(/\{\{|\}\}/g, '')))].sort((a, b) => Number(a) - Number(b));
+  if (nums.length === 0) return '{}';
+  const obj: Record<string, string> = {};
+  for (const n of nums) obj[n] = VAR_DEFAULTS[n] || `Value${n}`;
+  return JSON.stringify(obj, null, 2);
+}
+
 function TestPanel({ campaign, onClose }: { campaign: CampaignDetail; onClose: () => void }) {
-  const [phone, setPhone]     = useState('');
-  const [vars, setVars]       = useState('{}');
-  const [sending, setSending] = useState(false);
+  const defaultVars               = buildDefaultVars(campaign.body_text);
+  const [phone, setPhone]         = useState('');
+  const [vars, setVars]           = useState(defaultVars);
+  const [sending, setSending]     = useState(false);
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') || 'YOUR_JWT_TOKEN' : 'YOUR_JWT_TOKEN';
   const endpoint = typeof window !== 'undefined'
