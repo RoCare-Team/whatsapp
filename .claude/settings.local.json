@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mysql -u root whatsapp_saas -e \"ALTER TABLE campaigns ADD COLUMN campaign_type ENUM\\('broadcast','api','drip','transactional'\\) DEFAULT 'broadcast' AFTER template_id;\")",
+      "Bash(npx next *)",
+      "Bash(npx tsc *)"
+    ]
+  }
+}
