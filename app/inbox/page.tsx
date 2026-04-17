@@ -151,8 +151,12 @@ export default function InboxPage() {
   const [search, setSearch]       = useState('');
   const [sending, setSending]     = useState(false);
   const [tab, setTab]             = useState<'all' | 'unread'>('all');
-  // local unread overrides: contactId → 0 means "cleared by user opening"
-  const [clearedIds, setClearedIds] = useState<Set<number>>(new Set());
+  // Persist read timestamps in localStorage: { contactId: ISO timestamp }
+  const [readAt, setReadAt] = useState<Record<number, string>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('inbox_read_at') || '{}');
+    } catch { return {}; }
+  });
   const bottomRef                   = useRef<HTMLDivElement>(null);
   const chatRef                     = useRef<HTMLDivElement>(null);
 
@@ -172,8 +176,10 @@ export default function InboxPage() {
 
   function selectContact(c: Contact) {
     setSelected(c);
-    // Mark as read locally
-    setClearedIds((prev) => new Set(prev).add(c.id));
+    // Store current time as "read at" for this contact
+    const updated = { ...readAt, [c.id]: new Date().toISOString() };
+    setReadAt(updated);
+    localStorage.setItem('inbox_read_at', JSON.stringify(updated));
   }
 
   useEffect(() => {
@@ -236,7 +242,12 @@ export default function InboxPage() {
         {/* Tabs */}
         <div className="flex border-b border-gray-100">
           {(['all', 'unread'] as const).map((t) => {
-            const unreadCount = contacts.filter((c) => !clearedIds.has(c.id) && Number(c.unread_count) > 0).length;
+            const unreadCount = contacts.filter((c) => {
+              if (!Number(c.unread_count)) return false;
+              const viewedAt = readAt[c.id];
+              if (!viewedAt) return true;
+              return c.last_message_at && new Date(c.last_message_at) > new Date(viewedAt);
+            }).length;
             return (
               <button key={t} onClick={() => setTab(t)}
                 className={`flex-1 py-2 text-xs font-semibold capitalize transition-colors flex items-center justify-center gap-1.5 ${
@@ -255,9 +266,21 @@ export default function InboxPage() {
             <p className="text-center text-gray-400 text-xs py-10">No contacts</p>
           )}
           {filtered
-            .filter((c) => tab === 'all' || (!clearedIds.has(c.id) && Number(c.unread_count) > 0))
+            .filter((c) => {
+              if (tab === 'all') return true;
+              if (!Number(c.unread_count)) return false;
+              const viewedAt = readAt[c.id];
+              if (!viewedAt) return true;
+              return c.last_message_at && new Date(c.last_message_at) > new Date(viewedAt);
+            })
             .map((c) => {
-            const unread  = clearedIds.has(c.id) ? 0 : Number(c.unread_count || 0);
+            const viewedAt = readAt[c.id];
+            const unread = (() => {
+              if (!Number(c.unread_count)) return 0;
+              if (!viewedAt) return Number(c.unread_count);
+              return c.last_message_at && new Date(c.last_message_at) > new Date(viewedAt)
+                ? Number(c.unread_count) : 0;
+            })();
             const initial = (c.name || c.phone).charAt(0).toUpperCase();
             const avatarColors = ['bg-orange-400','bg-purple-500','bg-blue-500','bg-green-500','bg-red-400'];
             const color = avatarColors[initial.charCodeAt(0) % avatarColors.length];
