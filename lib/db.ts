@@ -11,17 +11,20 @@ declare global {
 }
 
 function createPool(): mysql.Pool {
+  if (!process.env.DB_HOST || !process.env.DB_USER || !process.env.DB_PASSWORD || !process.env.DB_NAME) {
+    throw new Error('Missing required database environment variables: DB_HOST, DB_USER, DB_PASSWORD, DB_NAME');
+  }
   return mysql.createPool({
-    host:               process.env.DB_HOST     || 'localhost',
+    host:               process.env.DB_HOST,
     port:               Number(process.env.DB_PORT) || 3306,
-    user:               process.env.DB_USER     || 'root',
-    password:           process.env.DB_PASSWORD || '',
-    database:           process.env.DB_NAME     || 'whatsapp_saas',
+    user:               process.env.DB_USER,
+    password:           process.env.DB_PASSWORD,
+    database:           process.env.DB_NAME,
     waitForConnections: true,
-    connectionLimit:    10,
+    connectionLimit:    5,   // lower limit for serverless (Vercel)
     queueLimit:         0,
     charset:            'utf8mb4',
-    timezone:           'Z',                // store as UTC
+    timezone:           'Z', // store as UTC
   });
 }
 
