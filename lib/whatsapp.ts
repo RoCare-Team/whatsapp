@@ -118,17 +118,18 @@ export async function getMetaTemplates(accessToken: string, wabaId: string) {
 
 // ---- Parse incoming webhook payload ----
 export interface IncomingMessage {
-  wamid:      string;
-  from:       string;  // phone number
-  timestamp:  string;
-  type:       string;
-  text?:      string;
-  image?:     object;
-  audio?:     object;
-  document?:  object;
-  video?:     object;
-  interactive?: object;
-  button?:    { text: string; payload: string };
+  wamid:           string;
+  from:            string;  // phone number
+  timestamp:       string;
+  type:            string;
+  text?:           string;
+  image?:          object;
+  audio?:          object;
+  document?:       object;
+  video?:          object;
+  interactive?:    object;
+  button?:         { text: string; payload: string };
+  replied_to_wamid?: string;  // context.id from button replies
 }
 
 export interface StatusUpdate {
@@ -154,19 +155,21 @@ export function parseWebhookBody(body: Record<string, unknown>): {
     // Inbound messages
     const msgs = (value?.messages as Record<string, unknown>[]) ?? [];
     for (const m of msgs) {
-      const btn = m.button as Record<string, unknown> | undefined;
+      const btn     = m.button  as Record<string, unknown> | undefined;
+      const context = m.context as Record<string, unknown> | undefined;
       result.messages.push({
-        wamid:     m.id as string,
-        from:      m.from as string,
-        timestamp: m.timestamp as string,
-        type:      m.type as string,
-        text:      (m.text as Record<string, unknown>)?.body as string,
-        image:     m.image as object,
-        audio:     m.audio as object,
-        document:  m.document as object,
-        video:     m.video as object,
-        interactive: m.interactive as object,
-        button:    btn ? { text: btn.text as string, payload: btn.payload as string } : undefined,
+        wamid:            m.id as string,
+        from:             m.from as string,
+        timestamp:        m.timestamp as string,
+        type:             m.type as string,
+        text:             (m.text as Record<string, unknown>)?.body as string,
+        image:            m.image as object,
+        audio:            m.audio as object,
+        document:         m.document as object,
+        video:            m.video as object,
+        interactive:      m.interactive as object,
+        button:           btn ? { text: btn.text as string, payload: btn.payload as string } : undefined,
+        replied_to_wamid: context?.id as string | undefined,
       });
     }
 

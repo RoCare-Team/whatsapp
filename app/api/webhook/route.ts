@@ -100,12 +100,23 @@ export async function POST(req: NextRequest) {
     else if (msg.type === 'interactive') content = '📋 Interactive reply';
     else content = msg.type;
 
-    // Store message
-    await insert(
-      `INSERT IGNORE INTO messages (workspace_id, contact_id, wamid, direction, type, content, status, sent_at)
-       VALUES (?, ?, ?, 'inbound', ?, ?, 'delivered', FROM_UNIXTIME(?))`,
-      [workspaceId, contactId, msg.wamid, msg.type, content, msg.timestamp]
-    );
+    // Store message (try with replied_to_wamid, fallback without)
+    try {
+      await insert(
+        `INSERT IGNORE INTO messages
+           (workspace_id, contact_id, wamid, replied_to_wamid, direction, type, content, status, sent_at)
+         VALUES (?, ?, ?, ?, 'inbound', ?, ?, 'delivered', FROM_UNIXTIME(?))`,
+        [workspaceId, contactId, msg.wamid, msg.replied_to_wamid || null, msg.type, content, msg.timestamp]
+      );
+    } catch {
+      // fallback: insert without replied_to_wamid (column may not exist yet)
+      await insert(
+        `INSERT IGNORE INTO messages
+           (workspace_id, contact_id, wamid, direction, type, content, status, sent_at)
+         VALUES (?, ?, ?, 'inbound', ?, ?, 'delivered', FROM_UNIXTIME(?))`,
+        [workspaceId, contactId, msg.wamid, msg.type, content, msg.timestamp]
+      );
+    }
 
     // ---- Chatbot: match rules ----
     if (msg.type === 'text' && msg.text) {

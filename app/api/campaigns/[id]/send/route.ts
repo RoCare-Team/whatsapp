@@ -25,6 +25,7 @@ export async function POST(
     // ── Load campaign + template ─────────────────────────────
     const rows = await query<RowDataPacket[]>(
       `SELECT c.*, t.name as template_name, t.language,
+              t.body_text, t.header_type, t.header_content, t.footer_text, t.buttons,
               w.access_token, w.phone_number_id
        FROM campaigns c
        JOIN templates t  ON t.id = c.template_id
@@ -90,20 +91,35 @@ export async function POST(
 
     const wamid = (result?.messages as Record<string, unknown>[])?.[0]?.id as string | undefined;
 
-    // Build display content: body_text with variables replaced, fallback to template name
-    let displayContent = (campaign.body_text as string) || (campaign.template_name as string);
-    if (variables && displayContent) {
+    // Build body with variables replaced
+    let bodyText = (campaign.body_text as string) || '';
+    if (variables && bodyText) {
       for (const [k, v] of Object.entries(variables)) {
-        displayContent = displayContent.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), v);
+        bodyText = bodyText.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), v);
       }
     }
+
+    // Parse buttons
+    let buttons: unknown[] = [];
+    try { buttons = JSON.parse((campaign.buttons as string) || '[]'); } catch { buttons = []; }
+
+    // Store full template structure as JSON so inbox can render it properly
+    const templateContent = JSON.stringify({
+      __type:         'template',
+      template_name:  campaign.template_name,
+      header_type:    campaign.header_type    || 'NONE',
+      header_content: campaign.header_content || '',
+      body:           bodyText,
+      footer:         campaign.footer_text    || '',
+      buttons,
+    });
 
     // ── Store message row (enables webhook delivery tracking) ─
     const msgId = await insert(
       `INSERT INTO messages
          (workspace_id, contact_id, wamid, direction, type, content, campaign_id, status, sent_at)
        VALUES (?, ?, ?, 'outbound', 'template', ?, ?, 'sent', NOW())`,
-      [payload.workspaceId, contactId, wamid || null, displayContent, campaignId]
+      [payload.workspaceId, contactId, wamid || null, templateContent, campaignId]
     );
 
     // ── Add campaign_contacts entry (enables contact list + status tracking) ─

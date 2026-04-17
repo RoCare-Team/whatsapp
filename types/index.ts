@@ -35,8 +35,11 @@ export interface Contact {
   status:      'new' | 'contacted' | 'converted' | 'lost';
   tags:        string[];
   notes:       string;
-  opted_in:    number;
-  created_at:  string;
+  opted_in:        number;
+  created_at:      string;
+  updated_at?:     string;
+  last_message_at?: string;
+  unread_count?:   number;
 }
 
 export interface Template {
@@ -64,11 +67,12 @@ export interface TemplateButton {
 }
 
 export interface Message {
-  id:          number;
-  workspace_id: number;
-  contact_id:  number;
-  wamid:       string;
-  direction:   'inbound' | 'outbound';
+  id:               number;
+  workspace_id:     number;
+  contact_id:       number;
+  wamid:            string;
+  replied_to_wamid?: string;
+  direction:        'inbound' | 'outbound';
   type:        string;
   content:     string;
   template_id: number;

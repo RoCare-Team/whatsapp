@@ -1,10 +1,148 @@
 'use client';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { apiFetch } from '@/hooks/useApi';
-import { Send, Search } from 'lucide-react';
+import { Send, Search, FileText, Image, FileVideo, File, ChevronDown, ChevronUp } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Contact, Message } from '@/types';
 
+// ── Template bubble types ─────────────────────────────────────
+interface TemplateContent {
+  __type: 'template';
+  template_name: string;
+  header_type: string;
+  header_content: string;
+  body: string;
+  footer: string;
+  buttons: { type: string; text: string }[];
+}
+function parseTemplateContent(content: string): TemplateContent | null {
+  try {
+    const p = JSON.parse(content);
+    if (p.__type === 'template') return p as TemplateContent;
+  } catch { /**/ }
+  return null;
+}
+
+// ── WhatsApp template bubble ──────────────────────────────────
+function TemplateBubble({ data, status, time }: { data: TemplateContent; status: string; time: string }) {
+  const HeaderIcon = data.header_type === 'IMAGE' ? Image
+    : data.header_type === 'VIDEO'    ? FileVideo
+    : data.header_type === 'DOCUMENT' ? File : FileText;
+
+  return (
+    <div className="w-72 rounded-2xl rounded-br-sm overflow-hidden shadow-sm border border-green-100">
+      {data.header_type && data.header_type !== 'NONE' && (
+        <div className="bg-gray-100 px-4 py-2.5">
+          {data.header_type === 'TEXT'
+            ? <p className="font-bold text-gray-800 text-sm">{data.header_content}</p>
+            : <div className="flex items-center gap-2 text-gray-500 text-sm"><HeaderIcon size={15} /><span>{data.header_type}</span></div>}
+        </div>
+      )}
+      <div className="bg-[#dcf8c6] px-4 py-2.5">
+        <p className="text-sm text-gray-800 whitespace-pre-wrap break-words leading-relaxed">{data.body}</p>
+        {data.footer && <p className="text-xs text-gray-400 mt-1.5">{data.footer}</p>}
+        <p className="text-xs text-gray-400 text-right mt-1">
+          {time}
+          <span className={`ml-1 ${status === 'read' ? 'text-blue-500' : 'text-gray-400'}`}>
+            {status === 'read' || status === 'delivered' ? '✓✓' : '✓'}
+          </span>
+        </p>
+      </div>
+      {data.buttons?.length > 0 && (
+        <div className="divide-y divide-gray-200 border-t border-gray-200">
+          {data.buttons.map((btn, i) => (
+            <div key={i} className="bg-white px-4 py-2 text-center text-sm font-medium text-[#00a5f4]">{btn.text}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Contact Profile Panel ─────────────────────────────────────
+function ProfilePanel({ contact, msgCount }: { contact: Contact; msgCount: number }) {
+  const [open, setOpen] = useState<Record<string, boolean>>({ info: true });
+  const toggle = (k: string) => setOpen(p => ({ ...p, [k]: !p[k] }));
+
+  const initial = (contact.name || contact.phone || '?').charAt(0).toUpperCase();
+  const avatarColors = ['bg-orange-400', 'bg-purple-500', 'bg-blue-500', 'bg-green-500', 'bg-red-400'];
+  const color = avatarColors[initial.charCodeAt(0) % avatarColors.length];
+
+  const infoRows = [
+    { label: 'Status',            value: <span className={`font-semibold ${contact.status === 'converted' ? 'text-green-600' : 'text-gray-700'}`}>{contact.status || 'Active'}</span> },
+    { label: 'Last Active',       value: contact.updated_at ? new Date(contact.updated_at).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '—' },
+    { label: 'Template Messages', value: msgCount },
+    { label: 'Session Messages',  value: msgCount },
+    { label: 'Source',            value: contact.source || '—' },
+    { label: 'Opted In',          value: contact.opted_in ? <span className="text-green-600 font-semibold">Yes</span> : <span className="text-red-400">No</span> },
+  ];
+
+  return (
+    <div className="w-72 border-l border-gray-200 bg-white flex flex-col overflow-y-auto">
+      {/* Avatar + name */}
+      <div className="p-5 border-b border-gray-100 text-center">
+        <div className={`w-14 h-14 rounded-full ${color} text-white text-2xl font-bold flex items-center justify-center mx-auto mb-3`}>
+          {initial}
+        </div>
+        <p className="font-bold text-gray-900">{contact.name || contact.phone}</p>
+        <p className="text-sm text-gray-400 mt-0.5">+{contact.phone}</p>
+      </div>
+
+      {/* Info section */}
+      <div className="border-b border-gray-100">
+        <button onClick={() => toggle('info')}
+          className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50">
+          Chat Profile
+          {open.info ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+        </button>
+        {open.info && (
+          <div className="px-4 pb-4 space-y-2.5">
+            {infoRows.map(({ label, value }) => (
+              <div key={label} className="flex items-center justify-between text-sm">
+                <span className="text-gray-400">{label}</span>
+                <span className="text-gray-700 text-right">{value}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Tags */}
+      <div className="border-b border-gray-100">
+        <button onClick={() => toggle('tags')}
+          className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50">
+          Tags
+          {open.tags ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+        </button>
+        {open.tags && (
+          <div className="px-4 pb-4">
+            {contact.tags && (Array.isArray(contact.tags) ? contact.tags : (() => { try { return JSON.parse(contact.tags as string); } catch { return []; } })()).length > 0
+              ? (Array.isArray(contact.tags) ? contact.tags : JSON.parse(contact.tags as string)).map((t: string, i: number) => (
+                <span key={i} className="inline-block bg-blue-100 text-blue-700 text-xs rounded-full px-2.5 py-0.5 mr-1 mb-1">{t}</span>
+              ))
+              : <p className="text-xs text-gray-400">No tags</p>}
+          </div>
+        )}
+      </div>
+
+      {/* Notes */}
+      <div className="border-b border-gray-100">
+        <button onClick={() => toggle('notes')}
+          className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50">
+          Notes
+          {open.notes ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+        </button>
+        {open.notes && (
+          <div className="px-4 pb-4">
+            <p className="text-xs text-gray-400">{contact.notes || 'No notes'}</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Main Inbox Page ───────────────────────────────────────────
 export default function InboxPage() {
   const [contacts, setContacts]   = useState<Contact[]>([]);
   const [selected, setSelected]   = useState<Contact | null>(null);
@@ -12,26 +150,39 @@ export default function InboxPage() {
   const [text, setText]           = useState('');
   const [search, setSearch]       = useState('');
   const [sending, setSending]     = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const [tab, setTab]             = useState<'all' | 'unread'>('all');
+  // local unread overrides: contactId → 0 means "cleared by user opening"
+  const [clearedIds, setClearedIds] = useState<Set<number>>(new Set());
+  const bottomRef                   = useRef<HTMLDivElement>(null);
+  const chatRef                     = useRef<HTMLDivElement>(null);
 
-  // Load contacts that have messages
-  useEffect(() => {
-    apiFetch('/api/contacts?limit=100').then((r) => setContacts(r.data?.data || []));
+  const loadContacts = useCallback(() => {
+    apiFetch('/api/contacts?limit=200').then((r) => setContacts(r.data?.data || []));
   }, []);
 
-  // Load messages when contact selected
+  useEffect(() => {
+    loadContacts();
+    const iv = setInterval(loadContacts, 10000); // refresh unread counts every 10s
+    return () => clearInterval(iv);
+  }, [loadContacts]);
+
+  const loadMessages = useCallback((contactId: number) => {
+    apiFetch(`/api/messages?contactId=${contactId}&limit=80`).then((r) => setMessages(r.data || []));
+  }, []);
+
+  function selectContact(c: Contact) {
+    setSelected(c);
+    // Mark as read locally
+    setClearedIds((prev) => new Set(prev).add(c.id));
+  }
+
   useEffect(() => {
     if (!selected) return;
-    apiFetch(`/api/messages?contactId=${selected.id}&limit=50`)
-      .then((r) => setMessages(r.data || []));
-    const interval = setInterval(() => {
-      apiFetch(`/api/messages?contactId=${selected.id}&limit=50`)
-        .then((r) => setMessages(r.data || []));
-    }, 5000); // poll every 5s
-    return () => clearInterval(interval);
-  }, [selected]);
+    loadMessages(selected.id);
+    const iv = setInterval(() => loadMessages(selected.id), 5000);
+    return () => clearInterval(iv);
+  }, [selected, loadMessages]);
 
-  // Scroll to bottom on new messages
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -45,13 +196,20 @@ export default function InboxPage() {
         body: JSON.stringify({ contactId: selected.id, type: 'text', text }),
       });
       setText('');
-      // Refresh messages
-      const r = await apiFetch(`/api/messages?contactId=${selected.id}&limit=50`);
-      setMessages(r.data || []);
+      loadMessages(selected.id);
     } catch (err) {
-      toast.error('Failed to send: ' + (err instanceof Error ? err.message : 'error'));
+      toast.error('Failed: ' + (err instanceof Error ? err.message : 'error'));
     } finally {
       setSending(false);
+    }
+  }
+
+  function scrollToReplied(wamid: string) {
+    const el = document.getElementById(`msg-${wamid}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('ring-2', 'ring-whatsapp-green', 'ring-offset-1', 'rounded-xl');
+      setTimeout(() => el.classList.remove('ring-2', 'ring-whatsapp-green', 'ring-offset-1', 'rounded-xl'), 1500);
     }
   }
 
@@ -59,117 +217,184 @@ export default function InboxPage() {
     (c.name || c.phone).toLowerCase().includes(search.toLowerCase())
   );
 
+  const templateMsgCount = messages.filter((m) => m.type === 'template').length;
+
   return (
-    <div className="h-[calc(100vh-8rem)] flex border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm">
-      {/* Contact list */}
-      <div className="w-80 border-r border-gray-200 flex flex-col">
-        <div className="p-3 border-b border-gray-200">
+    <div className="h-[calc(100vh-5rem)] flex border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm">
+
+      {/* ── Left: Contact List ──────────────────────────────── */}
+      <div className="w-72 border-r border-gray-200 flex flex-col flex-shrink-0">
+        {/* Search */}
+        <div className="p-3 border-b border-gray-100">
           <div className="relative">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              value={search} onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search contacts..."
-              className="input pl-9 text-sm"
-            />
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search contacts..." className="input pl-9 text-sm py-2" />
           </div>
         </div>
+
+        {/* Tabs */}
+        <div className="flex border-b border-gray-100">
+          {(['all', 'unread'] as const).map((t) => {
+            const unreadCount = contacts.filter((c) => !clearedIds.has(c.id) && Number(c.unread_count) > 0).length;
+            return (
+              <button key={t} onClick={() => setTab(t)}
+                className={`flex-1 py-2 text-xs font-semibold capitalize transition-colors flex items-center justify-center gap-1.5 ${
+                  tab === t ? 'border-b-2 border-whatsapp-green text-whatsapp-teal' : 'text-gray-400'}`}>
+                {t === 'all' ? `All (${contacts.length})` : (
+                  <>Unread {unreadCount > 0 && <span className="bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5 leading-none">{unreadCount}</span>}</>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Contact items */}
         <div className="flex-1 overflow-y-auto">
-          {filtered.map((c) => (
-            <button
-              key={c.id}
-              onClick={() => setSelected(c)}
-              className={`w-full text-left px-4 py-3 border-b border-gray-100 hover:bg-gray-50 transition-colors
-                ${selected?.id === c.id ? 'bg-whatsapp-light' : ''}`}
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-whatsapp-green text-white flex items-center justify-center font-semibold text-sm flex-shrink-0">
-                  {(c.name || c.phone).charAt(0).toUpperCase()}
-                </div>
-                <div className="min-w-0">
-                  <p className="font-medium text-sm text-gray-900 truncate">{c.name || c.phone}</p>
-                  <p className="text-xs text-gray-500 truncate">+{c.phone}</p>
-                </div>
-              </div>
-            </button>
-          ))}
           {filtered.length === 0 && (
-            <p className="text-center text-gray-400 text-sm py-8">No contacts found</p>
+            <p className="text-center text-gray-400 text-xs py-10">No contacts</p>
           )}
+          {filtered
+            .filter((c) => tab === 'all' || (!clearedIds.has(c.id) && Number(c.unread_count) > 0))
+            .map((c) => {
+            const unread  = clearedIds.has(c.id) ? 0 : Number(c.unread_count || 0);
+            const initial = (c.name || c.phone).charAt(0).toUpperCase();
+            const avatarColors = ['bg-orange-400','bg-purple-500','bg-blue-500','bg-green-500','bg-red-400'];
+            const color = avatarColors[initial.charCodeAt(0) % avatarColors.length];
+            return (
+              <button key={c.id} onClick={() => selectContact(c)}
+                className={`w-full text-left px-3 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors flex items-center gap-3
+                  ${selected?.id === c.id ? 'bg-green-50 border-l-2 border-l-whatsapp-green' : ''}`}>
+                <div className={`w-10 h-10 rounded-full ${color} text-white flex items-center justify-center font-bold text-sm flex-shrink-0`}>
+                  {initial}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-1">
+                    <p className={`text-sm truncate ${unread > 0 ? 'font-bold text-gray-900' : 'font-medium text-gray-700'}`}>
+                      {c.name || c.phone}
+                    </p>
+                    {c.last_message_at && (
+                      <span className="text-xs text-gray-400 flex-shrink-0">
+                        {new Date(c.last_message_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between mt-0.5">
+                    <p className={`text-xs truncate ${unread > 0 ? 'text-gray-700 font-medium' : 'text-gray-400'}`}>
+                      +{c.phone}
+                    </p>
+                    {unread > 0 && (
+                      <span className="flex-shrink-0 bg-whatsapp-green text-white text-xs font-bold rounded-full min-w-[20px] h-5 flex items-center justify-center px-1.5">
+                        {unread > 99 ? '99+' : unread}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {/* Chat window */}
+      {/* ── Middle: Chat area ───────────────────────────────── */}
       {selected ? (
-        <div className="flex-1 flex flex-col">
-          {/* Header */}
-          <div className="px-4 py-3 border-b border-gray-200 flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-whatsapp-green text-white flex items-center justify-center font-semibold text-sm">
+        <div className="flex-1 flex flex-col min-w-0">
+          {/* Chat header */}
+          <div className="px-4 py-3 border-b border-gray-200 flex items-center gap-3 bg-white">
+            <div className="w-9 h-9 rounded-full bg-whatsapp-green text-white flex items-center justify-center font-bold text-sm">
               {(selected.name || selected.phone).charAt(0).toUpperCase()}
             </div>
             <div>
               <p className="font-semibold text-sm text-gray-900">{selected.name || selected.phone}</p>
-              <p className="text-xs text-gray-500">+{selected.phone}</p>
+              <p className="text-xs text-gray-400">+{selected.phone}</p>
             </div>
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50">
-            {messages.map((m) => (
-              <div key={m.id} className={`flex ${m.direction === 'outbound' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl text-sm shadow-sm
-                  ${m.direction === 'outbound'
-                    ? 'bg-whatsapp-light text-gray-800 rounded-br-sm'
-                    : 'bg-white text-gray-800 rounded-bl-sm border border-gray-100'}`}>
+          <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-[#f0f0f0]" ref={chatRef}
+            style={{ backgroundImage: 'radial-gradient(circle, #d4d4d4 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
+            {messages.map((m) => {
+              const tpl        = m.type === 'template' ? parseTemplateContent(m.content) : null;
+              const repliedMsg = m.replied_to_wamid ? messages.find((x) => x.wamid === m.replied_to_wamid) : null;
+              const timeStr    = new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-                  {/* Template badge */}
-                  {m.type === 'template' && (
-                    <p className="text-xs text-whatsapp-teal font-medium mb-1 flex items-center gap-1">
-                      📋 Template
-                    </p>
+              return (
+                <div key={m.id} id={`msg-${m.wamid}`}
+                  className={`flex transition-all ${m.direction === 'outbound' ? 'justify-end' : 'justify-start'}`}>
+                  {tpl ? (
+                    <TemplateBubble data={tpl} status={m.status} time={timeStr} />
+                  ) : (
+                    <div className={`max-w-xs lg:max-w-sm rounded-2xl text-sm shadow-sm overflow-hidden
+                      ${m.direction === 'outbound'
+                        ? 'bg-[#dcf8c6] text-gray-800 rounded-br-sm'
+                        : 'bg-white text-gray-800 rounded-bl-sm'}`}>
+
+                      {/* Reply reference — with linked message or fallback to last template */}
+                      {m.type === 'button' && (() => {
+                        const quotedMsg = repliedMsg || messages.slice().reverse().find(
+                          (x) => x.direction === 'outbound' && x.type === 'template' && x.id < m.id
+                        );
+                        const quotedTpl = quotedMsg ? parseTemplateContent(quotedMsg.content) : null;
+                        return (
+                          <button
+                            onClick={() => quotedMsg?.wamid && scrollToReplied(quotedMsg.wamid)}
+                            className="w-full text-left bg-black/10 border-l-4 border-whatsapp-green px-3 py-2 hover:bg-black/15 transition-colors">
+                            <p className="text-whatsapp-teal font-semibold text-xs flex items-center gap-1 mb-0.5">
+                              ↩ Replied to this message
+                            </p>
+                            <p className="text-gray-600 text-xs truncate">
+                              {quotedTpl?.body?.slice(0, 55) || quotedMsg?.content?.slice(0, 55) || 'Template message'}
+                              {((quotedTpl?.body?.length || 0) > 55) && '…'}
+                            </p>
+                          </button>
+                        );
+                      })()}
+
+                      <div className="px-3 py-2">
+                        <p className="break-words whitespace-pre-wrap leading-relaxed">{m.content}</p>
+                        <p className={`text-xs mt-1 flex items-center gap-0.5 ${m.direction === 'outbound' ? 'justify-end text-gray-400' : 'text-gray-300'}`}>
+                          {timeStr}
+                          {m.direction === 'outbound' && (
+                            <span className={m.status === 'read' ? 'text-blue-500' : 'text-gray-400'}>
+                              {m.status === 'read' || m.status === 'delivered' ? ' ✓✓' : ' ✓'}
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                    </div>
                   )}
-
-                  {/* Button reply badge */}
-                  {m.type === 'button' && (
-                    <p className="text-xs text-blue-500 font-medium mb-1">🔘 Button Reply</p>
-                  )}
-
-                  <p className="break-words whitespace-pre-wrap">{m.content}</p>
-
-                  <p className={`text-xs mt-1 ${m.direction === 'outbound' ? 'text-gray-500 text-right' : 'text-gray-400'}`}>
-                    {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    {m.direction === 'outbound' && (
-                      <span className={`ml-1 ${m.status === 'read' ? 'text-blue-500' : ''}`}>
-                        {m.status === 'read' ? '✓✓' : m.status === 'delivered' ? '✓✓' : '✓'}
-                      </span>
-                    )}
-                  </p>
                 </div>
-              </div>
-            ))}
+              );
+            })}
             <div ref={bottomRef} />
           </div>
 
           {/* Input */}
-          <div className="p-3 border-t border-gray-200 bg-white flex gap-2">
-            <input
-              value={text}
+          <div className="p-3 border-t border-gray-200 bg-white flex gap-2 items-center">
+            <input value={text}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
               placeholder="Type a message..."
-              className="input flex-1"
-            />
-            <button onClick={sendMessage} disabled={sending || !text.trim()} className="btn-primary px-4">
-              <Send size={18} />
+              className="input flex-1 text-sm" />
+            <button onClick={sendMessage} disabled={sending || !text.trim()}
+              className="btn-primary px-4 py-2.5 disabled:opacity-50">
+              <Send size={16} />
             </button>
           </div>
         </div>
       ) : (
-        <div className="flex-1 flex items-center justify-center text-gray-400">
+        <div className="flex-1 flex items-center justify-center text-gray-400 bg-gray-50">
           <div className="text-center">
             <div className="text-5xl mb-3">💬</div>
-            <p className="font-medium">Select a contact to start chatting</p>
+            <p className="font-medium text-gray-500">Select a contact to start chatting</p>
+            <p className="text-sm text-gray-400 mt-1">Choose from the contact list on the left</p>
           </div>
         </div>
+      )}
+
+      {/* ── Right: Profile Panel ────────────────────────────── */}
+      {selected && (
+        <ProfilePanel contact={selected} msgCount={templateMsgCount} />
       )}
     </div>
   );

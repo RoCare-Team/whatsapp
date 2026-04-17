@@ -109,6 +109,7 @@ CREATE TABLE messages (
   workspace_id    INT NOT NULL,
   contact_id      INT,
   wamid           VARCHAR(200) UNIQUE,         -- WhatsApp Message ID from Meta
+  replied_to_wamid VARCHAR(200) NULL,          -- wamid of the message this is a reply to
   direction       ENUM('inbound','outbound') NOT NULL,
   type            ENUM('text','image','document','audio','video','template','interactive','reaction','unknown') DEFAULT 'text',
   content         TEXT,                        -- JSON or plain text

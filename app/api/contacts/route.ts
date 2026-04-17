@@ -16,22 +16,33 @@ export async function GET(req: NextRequest) {
     const search  = sp.get('search') || '';
     const status  = sp.get('status') || '';
 
-    let sql    = 'SELECT * FROM contacts WHERE workspace_id = ?';
+    let sql    = `
+      SELECT c.*,
+        (SELECT COUNT(*) FROM messages m
+         WHERE m.contact_id = c.id AND m.direction = 'inbound'
+           AND m.created_at > COALESCE(
+             (SELECT MAX(m2.created_at) FROM messages m2
+              WHERE m2.contact_id = c.id AND m2.direction = 'outbound'),
+             '1970-01-01'
+           )
+        ) AS unread_count,
+        (SELECT MAX(m3.created_at) FROM messages m3 WHERE m3.contact_id = c.id) AS last_message_at
+      FROM contacts c WHERE c.workspace_id = ?`;
     let countSql = 'SELECT COUNT(*) as total FROM contacts WHERE workspace_id = ?';
     const params: unknown[] = [payload.workspaceId];
 
     if (search) {
-      sql       += ' AND (name LIKE ? OR phone LIKE ? OR email LIKE ?)';
+      sql       += ' AND (c.name LIKE ? OR c.phone LIKE ? OR c.email LIKE ?)';
       countSql  += ' AND (name LIKE ? OR phone LIKE ? OR email LIKE ?)';
       params.push(`%${search}%`, `%${search}%`, `%${search}%`);
     }
     if (status) {
-      sql      += ' AND status = ?';
+      sql      += ' AND c.status = ?';
       countSql += ' AND status = ?';
       params.push(status);
     }
 
-    sql += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+    sql += ' ORDER BY last_message_at DESC, c.created_at DESC LIMIT ? OFFSET ?';
     const listParams  = [...params, limit, offset];
     const countParams = params;
 
