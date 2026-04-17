@@ -15,15 +15,29 @@ export async function GET(req: NextRequest) {
   const token     = searchParams.get('hub.verify_token');
   const challenge = searchParams.get('hub.challenge');
 
-  // Find workspace with matching verify_token
-  const ws = await query<RowDataPacket[]>(
-    'SELECT id FROM workspaces WHERE verify_token = ? AND is_active = 1 LIMIT 1',
-    [token]
-  );
+  if (mode !== 'subscribe' || !token || !challenge) {
+    return new NextResponse('Forbidden', { status: 403 });
+  }
 
-  if (mode === 'subscribe' && ws.length > 0) {
+  // 1️⃣ Check ENV variable first (works without DB)
+  const envToken = process.env.VERIFY_TOKEN;
+  if (envToken && token === envToken) {
     return new NextResponse(challenge, { status: 200 });
   }
+
+  // 2️⃣ Fallback: check DB for multi-tenant workspaces
+  try {
+    const ws = await query<RowDataPacket[]>(
+      'SELECT id FROM workspaces WHERE verify_token = ? AND is_active = 1 LIMIT 1',
+      [token]
+    );
+    if (ws.length > 0) {
+      return new NextResponse(challenge, { status: 200 });
+    }
+  } catch {
+    // DB not available — already checked ENV above
+  }
+
   return new NextResponse('Forbidden', { status: 403 });
 }
 
