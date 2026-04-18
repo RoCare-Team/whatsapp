@@ -127,6 +127,9 @@ export interface IncomingMessage {
   audio?:          object;
   document?:       object;
   video?:          object;
+  sticker?:        object;
+  location?:       object;
+  contacts?:       object[];
   interactive?:    object;
   button?:         { text: string; payload: string };
   replied_to_wamid?: string;  // context.id from button replies
@@ -167,6 +170,9 @@ export function parseWebhookBody(body: Record<string, unknown>): {
         audio:            m.audio as object,
         document:         m.document as object,
         video:            m.video as object,
+        sticker:          m.sticker as object,
+        location:         m.location as object,
+        contacts:         m.contacts as object[],
         interactive:      m.interactive as object,
         button:           btn ? { text: btn.text as string, payload: btn.payload as string } : undefined,
         replied_to_wamid: context?.id as string | undefined,

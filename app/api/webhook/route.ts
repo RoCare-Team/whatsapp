@@ -106,9 +106,7 @@ export async function POST(req: NextRequest) {
     else if (msg.type === 'button') content = msg.button?.text || msg.button?.payload || 'Button reply';
     else if (msg.type === 'image') {
       const d = msg.image as Record<string, unknown> | undefined;
-      console.log('[WEBHOOK] image received, raw:', JSON.stringify(msg.image));
       content = JSON.stringify({ __type: 'media', media_id: d?.id, mime_type: d?.mime_type, caption: d?.caption, workspace_id: workspaceId });
-      console.log('[WEBHOOK] image content stored:', content);
     } else if (msg.type === 'audio') {
       const d = msg.audio as Record<string, unknown> | undefined;
       content = JSON.stringify({ __type: 'media', media_id: d?.id, mime_type: d?.mime_type, workspace_id: workspaceId });
@@ -118,6 +116,15 @@ export async function POST(req: NextRequest) {
     } else if (msg.type === 'document') {
       const d = msg.document as Record<string, unknown> | undefined;
       content = JSON.stringify({ __type: 'media', media_id: d?.id, mime_type: d?.mime_type, filename: d?.filename, caption: d?.caption, workspace_id: workspaceId });
+    } else if (msg.type === 'sticker') {
+      const d = msg.sticker as Record<string, unknown> | undefined;
+      content = JSON.stringify({ __type: 'media', media_id: d?.id, mime_type: d?.mime_type || 'image/webp', workspace_id: workspaceId });
+    } else if (msg.type === 'location') {
+      const d = msg.location as Record<string, unknown> | undefined;
+      content = JSON.stringify({ __type: 'location', latitude: d?.latitude, longitude: d?.longitude, name: d?.name, address: d?.address });
+    } else if (msg.type === 'contacts') {
+      const list = msg.contacts as Record<string, unknown>[] | undefined;
+      content = JSON.stringify({ __type: 'contacts', contacts: list });
     } else if (msg.type === 'interactive') content = '📋 Interactive reply';
     else content = msg.type;
 

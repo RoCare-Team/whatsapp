@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { apiFetch } from '@/hooks/useApi';
-import { Send, Search, FileText, Image, FileVideo, File, ChevronDown, ChevronUp, Download, Music } from 'lucide-react';
+import { Send, Search, FileText, Image, FileVideo, File, ChevronDown, ChevronUp, Download, Music, MapPin, User } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Contact, Message } from '@/types';
 
@@ -86,6 +86,62 @@ function MediaBubble({ data, msgType }: { data: MediaContent; msgType: string })
       {data.caption && (
         <p className="text-xs text-gray-600 mt-1 px-1 break-words">{data.caption}</p>
       )}
+    </div>
+  );
+}
+
+// ── Location message ─────────────────────────────────────────
+interface LocationContent { __type: 'location'; latitude: number; longitude: number; name?: string; address?: string }
+function parseLocationContent(c: string): LocationContent | null {
+  try { const p = JSON.parse(c); if (p.__type === 'location') return p; } catch { /**/ } return null;
+}
+function LocationBubble({ data }: { data: LocationContent }) {
+  const url = `https://www.google.com/maps?q=${data.latitude},${data.longitude}`;
+  return (
+    <a href={url} target="_blank" rel="noreferrer"
+      className="flex items-start gap-2 hover:opacity-80 transition-opacity">
+      <div className="w-24 h-20 rounded-lg overflow-hidden flex-shrink-0 bg-gray-200 relative">
+        <img
+          src={`https://maps.googleapis.com/maps/api/staticmap?center=${data.latitude},${data.longitude}&zoom=15&size=96x80&markers=${data.latitude},${data.longitude}&key=`}
+          alt="map"
+          className="w-full h-full object-cover"
+          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+        />
+        <MapPin size={20} className="absolute inset-0 m-auto text-red-500" />
+      </div>
+      <div className="min-w-0">
+        <p className="text-sm font-semibold text-gray-800">{data.name || 'Location'}</p>
+        {data.address && <p className="text-xs text-gray-500 mt-0.5 break-words">{data.address}</p>}
+        <p className="text-xs text-blue-500 mt-1">Open in Maps ↗</p>
+      </div>
+    </a>
+  );
+}
+
+// ── Contact message ───────────────────────────────────────────
+interface ContactEntry { name?: { formatted_name?: string }; phones?: { phone?: string }[]; }
+interface ContactsContent { __type: 'contacts'; contacts: ContactEntry[] }
+function parseContactsContent(c: string): ContactsContent | null {
+  try { const p = JSON.parse(c); if (p.__type === 'contacts') return p; } catch { /**/ } return null;
+}
+function ContactsBubble({ data }: { data: ContactsContent }) {
+  return (
+    <div className="space-y-1.5">
+      {data.contacts?.map((ct, i) => {
+        const name  = ct.name?.formatted_name || 'Contact';
+        const phone = ct.phones?.[0]?.phone || '';
+        return (
+          <div key={i} className="flex items-center gap-2 bg-white/50 rounded-xl px-3 py-2">
+            <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
+              <User size={14} className="text-gray-500" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-gray-800 truncate">{name}</p>
+              {phone && <p className="text-xs text-gray-500">{phone}</p>}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -405,7 +461,9 @@ export default function InboxPage() {
             style={{ backgroundImage: 'radial-gradient(circle, #d4d4d4 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
             {messages.map((m) => {
               const tpl        = m.type === 'template' ? parseTemplateContent(m.content) : null;
-              const media      = ['image','audio','video','document'].includes(m.type) ? parseMediaContent(m.content) : null;
+              const media      = ['image','audio','video','document','sticker'].includes(m.type) ? parseMediaContent(m.content) : null;
+              const location   = m.type === 'location' ? parseLocationContent(m.content) : null;
+              const contacts   = m.type === 'contacts' ? parseContactsContent(m.content) : null;
               const repliedMsg = m.replied_to_wamid ? messages.find((x) => x.wamid === m.replied_to_wamid) : null;
               const timeStr    = new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -444,6 +502,10 @@ export default function InboxPage() {
                       <div className="px-3 py-2">
                         {media ? (
                           <MediaBubble data={media} msgType={m.type} />
+                        ) : location ? (
+                          <LocationBubble data={location} />
+                        ) : contacts ? (
+                          <ContactsBubble data={contacts} />
                         ) : (
                           <p className="break-words whitespace-pre-wrap leading-relaxed">{m.content}</p>
                         )}
