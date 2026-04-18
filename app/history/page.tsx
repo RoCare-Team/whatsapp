@@ -1,7 +1,8 @@
 'use client';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { apiFetch } from '@/hooks/useApi';
-import { Search, CheckCircle, MapPin, User, FileText, Download, Music } from 'lucide-react';
+import { Search, CheckCircle, MapPin, User, FileText, Download, Music, UserCheck, Loader2 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { Contact, Message } from '@/types';
 
 // ── Shared content parsers (same as inbox) ────────────────────
@@ -73,11 +74,12 @@ function renderMessageContent(m: Message) {
 }
 
 export default function HistoryPage() {
-  const [contacts, setContacts] = useState<Contact[]>([]);
-  const [selected, setSelected] = useState<Contact | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [search, setSearch]     = useState('');
-  const bottomRef               = useRef<HTMLDivElement>(null);
+  const [contacts, setContacts]   = useState<Contact[]>([]);
+  const [selected, setSelected]   = useState<Contact | null>(null);
+  const [messages, setMessages]   = useState<Message[]>([]);
+  const [search, setSearch]       = useState('');
+  const [actioning, setActioning] = useState(false);
+  const bottomRef                 = useRef<HTMLDivElement>(null);
 
   const loadContacts = useCallback(() => {
     apiFetch('/api/contacts?limit=200&chatStatus=resolved').then((r) => setContacts(r.data?.data || []));
@@ -91,6 +93,26 @@ export default function HistoryPage() {
   }, [selected]);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+
+  const isSessionOpen = messages.some((m) =>
+    m.direction === 'inbound' && Date.now() - new Date(m.created_at).getTime() < 24 * 60 * 60 * 1000
+  );
+
+  async function intervene() {
+    if (!selected || actioning) return;
+    setActioning(true);
+    try {
+      await apiFetch(`/api/contacts/${selected.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ chat_status: 'intervened' }),
+      });
+      setContacts((prev) => prev.filter((c) => c.id !== selected.id));
+      setSelected(null);
+      setMessages([]);
+      toast.success('Chat moved to Inbox — you can now reply');
+    } catch { toast.error('Failed to intervene'); }
+    finally { setActioning(false); }
+  }
 
   const filtered = contacts.filter((c) => (c.name || c.phone).toLowerCase().includes(search.toLowerCase()));
   const avatarColors = ['bg-orange-400', 'bg-purple-500', 'bg-blue-500', 'bg-green-500', 'bg-red-400'];
@@ -185,8 +207,19 @@ export default function HistoryPage() {
             <div ref={bottomRef} />
           </div>
 
-          <div className="p-3 border-t border-gray-100 bg-gray-50 text-center">
-            <p className="text-xs text-gray-400">This conversation is resolved and read-only</p>
+          <div className="p-3 border-t border-gray-100 bg-gray-50 flex items-center justify-between gap-3">
+            {isSessionOpen ? (
+              <>
+                <p className="text-xs text-green-600 font-medium">24h window is open</p>
+                <button onClick={intervene} disabled={actioning}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-whatsapp-green hover:bg-green-600 text-white text-xs font-semibold rounded-lg transition-colors disabled:opacity-50">
+                  {actioning ? <Loader2 size={13} className="animate-spin" /> : <UserCheck size={13} />}
+                  Intervene
+                </button>
+              </>
+            ) : (
+              <p className="text-xs text-gray-400 w-full text-center">This conversation is resolved and read-only</p>
+            )}
           </div>
         </div>
       ) : (
