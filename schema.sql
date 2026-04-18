@@ -31,7 +31,9 @@ CREATE TABLE workspaces (
   waba_id              VARCHAR(100),          -- WhatsApp Business Account ID
   access_token         TEXT,                  -- Meta API Access Token (encrypted)
   verify_token         VARCHAR(100),          -- Webhook verify token
-  webhook_secret       VARCHAR(100),
+  webhook_secret            VARCHAR(100),
+  chatbot_webhook_url       VARCHAR(500) NULL,      -- External chatbot webhook endpoint
+  chatbot_webhook_secret    VARCHAR(200) NULL,      -- HMAC secret for X-Webhook-Signature
   plan                 ENUM('free','pro','enterprise') DEFAULT 'free',
   is_active            TINYINT(1) DEFAULT 1,
   created_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -41,7 +43,22 @@ CREATE TABLE workspaces (
 ) ENGINE=InnoDB;
 
 -- ============================================================
--- 3. WORKSPACE MEMBERS (agents per workspace)
+-- 3. CHATBOT WEBHOOKS (multiple per workspace)
+-- ============================================================
+CREATE TABLE chatbot_webhooks (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  workspace_id INT NOT NULL,
+  name         VARCHAR(100) NOT NULL,          -- friendly label e.g. "My Bot Server"
+  url          VARCHAR(500) NOT NULL,          -- endpoint to POST to
+  secret       VARCHAR(200) NULL,              -- HMAC-SHA256 signing secret
+  is_active    TINYINT(1) DEFAULT 1,
+  created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  INDEX idx_ws (workspace_id)
+) ENGINE=InnoDB;
+
+-- ============================================================
+-- 4. WORKSPACE MEMBERS (agents per workspace)
 -- ============================================================
 CREATE TABLE workspace_members (
   id           INT AUTO_INCREMENT PRIMARY KEY,

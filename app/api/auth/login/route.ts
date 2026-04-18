@@ -45,7 +45,11 @@ export async function POST(req: NextRequest) {
     });
     return response;
   } catch (err) {
-    console.error('[login]', err);
-    return apiError('Internal server error', 500);
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[login]', msg);
+    return apiError(
+      process.env.NODE_ENV === 'development' ? msg : 'Internal server error',
+      500
+    );
   }
 }

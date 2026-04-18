@@ -54,12 +54,23 @@ export async function POST(req: NextRequest) {
   const { messages, statuses, phoneNumberId } = parseWebhookBody(body);
 
   let workspaceId: number | null = null;
+  let activeWebhooks: { url: string; secret: string | null }[] = [];
   if (phoneNumberId) {
     const ws = await query<RowDataPacket[]>(
-      'SELECT id, access_token FROM workspaces WHERE phone_number_id = ? AND is_active = 1 LIMIT 1',
+      'SELECT id FROM workspaces WHERE phone_number_id = ? AND is_active = 1 LIMIT 1',
       [phoneNumberId]
     );
-    if (ws.length > 0) workspaceId = ws[0].id as number;
+    if (ws.length > 0) {
+      workspaceId = ws[0].id as number;
+      // Fetch all active custom webhooks for this workspace
+      try {
+        const hooks = await query<RowDataPacket[]>(
+          'SELECT url, secret FROM chatbot_webhooks WHERE workspace_id = ? AND is_active = 1',
+          [workspaceId]
+        );
+        activeWebhooks = hooks.map((h) => ({ url: h.url as string, secret: h.secret as string | null }));
+      } catch { /* table may not exist yet */ }
+    }
   }
 
   // Log raw payload
@@ -116,6 +127,25 @@ export async function POST(req: NextRequest) {
          VALUES (?, ?, ?, 'inbound', ?, ?, 'delivered', FROM_UNIXTIME(?))`,
         [workspaceId, contactId, msg.wamid, msg.type, content, msg.timestamp]
       );
+    }
+
+    // ---- Forward to all active custom chatbot webhooks (non-blocking) ----
+    if (activeWebhooks.length > 0) {
+      const fwdPayload = {
+        event:        'message.received',
+        workspace_id: workspaceId,
+        contact:      { id: contactId, phone },
+        message: {
+          wamid:            msg.wamid,
+          type:             msg.type,
+          content,
+          timestamp:        msg.timestamp,
+          replied_to_wamid: msg.replied_to_wamid || null,
+        },
+      };
+      for (const hook of activeWebhooks) {
+        forwardToCustomWebhook(hook.url, hook.secret, fwdPayload);
+      }
     }
 
     // ---- Chatbot: match rules ----
@@ -175,6 +205,29 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ received: true });
+}
+
+// ---- Forward inbound message to custom webhook URL ----
+function forwardToCustomWebhook(
+  url: string,
+  secret: string | null,
+  payload: Record<string, unknown>
+) {
+  const body = JSON.stringify(payload);
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+
+  // Add HMAC-SHA256 signature if secret is configured
+  if (secret) {
+    try {
+      const crypto = require('crypto') as typeof import('crypto');
+      const sig = crypto.createHmac('sha256', secret).update(body).digest('hex');
+      headers['X-Webhook-Signature'] = `sha256=${sig}`;
+    } catch { /**/ }
+  }
+
+  // Fire-and-forget — never block inbound processing
+  fetch(url, { method: 'POST', headers, body })
+    .catch(() => { /* ignore errors */ });
 }
 
 // ---- Chatbot rule matching ----

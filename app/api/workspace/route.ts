@@ -12,7 +12,8 @@ export async function GET(req: NextRequest) {
   try {
     const payload = requireAuth(req);
     const rows = await query<RowDataPacket[]>(
-      'SELECT id, name, phone_number_id, waba_id, verify_token, plan, is_active FROM workspaces WHERE id = ?',
+      `SELECT id, name, phone_number_id, waba_id, verify_token, plan, is_active
+       FROM workspaces WHERE id = ?`,
       [payload.workspaceId]
     );
     if (rows.length === 0) return apiError('Workspace not found', 404);
@@ -31,8 +32,7 @@ export async function PUT(req: NextRequest) {
     const { name, phone_number_id, waba_id, access_token } = await req.json();
 
     await execute(
-      `UPDATE workspaces SET name=?, phone_number_id=?, waba_id=?, access_token=?
-       WHERE id = ?`,
+      `UPDATE workspaces SET name=?, phone_number_id=?, waba_id=?, access_token=? WHERE id = ?`,
       [name, phone_number_id, waba_id, access_token, payload.workspaceId]
     );
     return apiSuccess({ updated: true });
