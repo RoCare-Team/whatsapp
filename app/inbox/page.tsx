@@ -460,10 +460,10 @@ export default function InboxPage() {
           <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-[#f0f0f0]" ref={chatRef}
             style={{ backgroundImage: 'radial-gradient(circle, #d4d4d4 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
             {messages.map((m) => {
-              const tpl        = m.type === 'template' ? parseTemplateContent(m.content) : null;
-              const media      = ['image','audio','video','document','sticker'].includes(m.type) ? parseMediaContent(m.content) : null;
-              const location   = m.type === 'location' ? parseLocationContent(m.content) : null;
-              const contacts   = m.type === 'contacts' ? parseContactsContent(m.content) : null;
+              const tpl      = parseTemplateContent(m.content);
+              const media    = parseMediaContent(m.content);
+              const location = parseLocationContent(m.content);
+              const contacts = parseContactsContent(m.content);
               const repliedMsg = m.replied_to_wamid ? messages.find((x) => x.wamid === m.replied_to_wamid) : null;
               const timeStr    = new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
