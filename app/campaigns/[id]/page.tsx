@@ -4,7 +4,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { apiFetch } from '@/hooks/useApi';
 import {
   ArrowLeft, RefreshCw, Play, Radio, Zap, GitBranch, ShoppingBag,
-  CheckCircle, Clock, XCircle, Send, Eye, Copy, X
+  CheckCircle, Clock, XCircle, Send, Eye, Copy, X, Reply
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -36,8 +36,9 @@ interface ContactRow {
   error: string | null;
   sent_at: string | null;
   wamid: string | null;
+  has_replied: boolean;
 }
-interface Counts { pending: number; sent: number; delivered: number; read: number; failed: number }
+interface Counts { pending: number; sent: number; delivered: number; read: number; failed: number; replied: number }
 interface DailyRow { date: string; sent: number }
 
 // ── Config ────────────────────────────────────────────────────
@@ -80,11 +81,11 @@ export default function CampaignDetailPage() {
   const router   = useRouter();
 
   const [campaign, setCampaign]   = useState<CampaignDetail | null>(null);
-  const [counts, setCounts]       = useState<Counts>({ pending:0, sent:0, delivered:0, read:0, failed:0 });
+  const [counts, setCounts]       = useState<Counts>({ pending:0, sent:0, delivered:0, read:0, failed:0, replied:0 });
   const [daily, setDaily]         = useState<DailyRow[]>([]);
   const [contacts, setContacts]   = useState<ContactRow[]>([]);
   const [pagination, setPagination] = useState({ page: 1, total: 0, pages: 1 });
-  const [activeTab, setActiveTab] = useState<'all'|'sent'|'delivered'|'read'|'failed'|'pending'>('all');
+  const [activeTab, setActiveTab] = useState<'all'|'sent'|'delivered'|'read'|'failed'|'pending'|'replied'>('all');
   const [loading, setLoading]     = useState(true);
   const [showTest, setShowTest]   = useState(false);
   const [launching, setLaunching] = useState(false);
@@ -144,6 +145,7 @@ export default function CampaignDetailPage() {
     { key: 'sent',      label: 'Sent',      count: counts.sent },
     { key: 'delivered', label: 'Delivered', count: counts.delivered },
     { key: 'read',      label: 'Read',      count: counts.read },
+    { key: 'replied',   label: 'Replied',   count: counts.replied },
     { key: 'failed',    label: 'Failed',    count: counts.failed },
     { key: 'pending',   label: 'Pending',   count: counts.pending },
   ] as const;
@@ -195,11 +197,7 @@ export default function CampaignDetailPage() {
         <StatCard label="Sent"      count={campaign.sent_count}      total={total} color="text-blue-600" />
         <StatCard label="Delivered" count={campaign.delivered_count} total={total} color="text-green-600" />
         <StatCard label="Read"      count={campaign.read_count}      total={total} color="text-purple-600" />
-        <div className="card text-center py-4">
-          <p className="text-2xl font-bold text-gray-400">0%</p>
-          <p className="text-sm text-gray-500 mt-0.5">0</p>
-          <p className="text-xs text-gray-400 mt-0.5">Clicked</p>
-        </div>
+        <StatCard label="Replied"   count={counts.replied}           total={total} color="text-teal-600" />
         <StatCard label="Failed"    count={campaign.failed_count}    total={total} color="text-red-500" />
       </div>
 
@@ -269,6 +267,7 @@ export default function CampaignDetailPage() {
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Name</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Phone</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Status</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Replied</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Sent At</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Error</th>
               </tr>
@@ -277,7 +276,7 @@ export default function CampaignDetailPage() {
               {loading && contacts.length === 0 ? (
                 <tr><td colSpan={5} className="text-center py-10 text-gray-400">Loading...</td></tr>
               ) : contacts.length === 0 ? (
-                <tr><td colSpan={5} className="text-center py-10 text-gray-400">No records</td></tr>
+                <tr><td colSpan={6} className="text-center py-10 text-gray-400">No records</td></tr>
               ) : (
                 contacts.map((c) => {
                   const st = MSG_STATUS[c.status] || MSG_STATUS.pending;
@@ -289,6 +288,15 @@ export default function CampaignDetailPage() {
                         <span className={`inline-flex items-center gap-1 font-medium ${st.color}`}>
                           {st.icon} {st.label}
                         </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        {c.has_replied ? (
+                          <span className="inline-flex items-center gap-1 text-xs font-medium text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full">
+                            <Reply size={11} /> Yes
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-300">—</span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-gray-400 text-xs">
                         {c.sent_at ? new Date(c.sent_at).toLocaleString() : '—'}

@@ -4,7 +4,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import {
   LayoutDashboard, MessageSquare, Users, Megaphone,
-  FileText, Bot, BarChart3, Settings, LogOut, Menu, X, History
+  FileText, Bot, BarChart3, Settings, LogOut, Menu, X, History, CreditCard
 } from 'lucide-react';
 
 const nav = [
@@ -16,6 +16,7 @@ const nav = [
   { label: 'Templates',  href: '/templates',    icon: FileText },
   { label: 'Chatbot',    href: '/chatbot',      icon: Bot },
   { label: 'Analytics',  href: '/analytics',    icon: BarChart3 },
+  { label: 'Billing',    href: '/billing',      icon: CreditCard },
   { label: 'Settings',   href: '/settings',     icon: Settings },
 ];
 
