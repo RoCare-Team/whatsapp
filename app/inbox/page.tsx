@@ -639,6 +639,7 @@ export default function InboxPage() {
           {/* Input / Intervene */}
           {selected.chat_status === 'intervened' ? (
             isSessionOpen ? (
+              /* Session active — full text input */
               <div className="p-3 border-t border-gray-200 bg-white flex gap-2 items-center">
                 <input value={text}
                   onChange={(e) => setText(e.target.value)}
@@ -656,16 +657,22 @@ export default function InboxPage() {
                 </button>
               </div>
             ) : (
-              <div className="border-t border-gray-200 bg-amber-50 p-3">
-                <div className="flex items-center gap-2 mb-2">
-                  <Clock size={14} className="text-amber-500" />
-                  <p className="text-xs text-amber-700 font-medium">24-hour session expired — send a template to reopen</p>
+              /* Session expired — disabled input + template button */
+              <div className="border-t border-gray-200 bg-white">
+                <div className="flex items-center gap-1.5 px-3 pt-2 pb-1">
+                  <Clock size={12} className="text-amber-500 flex-shrink-0" />
+                  <p className="text-xs text-amber-600">24h session expired — waiting for user reply, or send a template</p>
                 </div>
-                <button onClick={() => { loadTemplates(); setShowTemplates((v) => !v); }}
-                  className="w-full flex items-center justify-center gap-2 py-2 bg-whatsapp-green hover:bg-green-600 text-white text-sm font-semibold rounded-lg transition-colors">
-                  <LayoutTemplate size={15} />
-                  Send Template
-                </button>
+                <div className="p-2 flex gap-2 items-center">
+                  <input disabled value=""
+                    placeholder="Waiting for user reply…"
+                    className="input flex-1 text-sm bg-gray-50 cursor-not-allowed text-gray-400" />
+                  <button onClick={() => { loadTemplates(); setShowTemplates((v) => !v); }}
+                    title="Send template"
+                    className="p-2.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-500 transition-colors flex-shrink-0">
+                    <LayoutTemplate size={16} />
+                  </button>
+                </div>
               </div>
             )
           ) : (
