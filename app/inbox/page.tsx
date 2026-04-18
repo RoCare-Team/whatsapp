@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { apiFetch } from '@/hooks/useApi';
-import { Send, Search, FileText, Image, FileVideo, File, ChevronDown, ChevronUp, Download, Music, MapPin, User } from 'lucide-react';
+import { Send, Search, FileText, Image, FileVideo, File, ChevronDown, ChevronUp, Download, Music, MapPin, User, UserCheck, CheckCircle, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Contact, Message } from '@/types';
 
@@ -191,8 +191,18 @@ function ProfilePanel({ contact, msgCount }: { contact: Contact; msgCount: numbe
   const avatarColors = ['bg-orange-400', 'bg-purple-500', 'bg-blue-500', 'bg-green-500', 'bg-red-400'];
   const color = avatarColors[initial.charCodeAt(0) % avatarColors.length];
 
+  const chatStatusBadge = contact.chat_status === 'intervened'
+    ? <span className="text-orange-600 font-semibold">Intervened</span>
+    : contact.chat_status === 'resolved'
+    ? <span className="text-green-600 font-semibold">Resolved</span>
+    : <span className="text-gray-600 font-semibold">Open</span>;
+
   const infoRows = [
     { label: 'Status',            value: <span className={`font-semibold ${contact.status === 'converted' ? 'text-green-600' : 'text-gray-700'}`}>{contact.status || 'Active'}</span> },
+    { label: 'Chat Status',       value: chatStatusBadge },
+    ...(contact.chat_status === 'intervened' && contact.intervened_by
+      ? [{ label: 'Intervened By', value: <span className="font-semibold text-orange-600">{contact.intervened_by}</span> }]
+      : []),
     { label: 'Last Active',       value: contact.updated_at ? new Date(contact.updated_at).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '—' },
     { label: 'Template Messages', value: msgCount },
     { label: 'Session Messages',  value: msgCount },
@@ -273,6 +283,7 @@ export default function InboxPage() {
   const [text, setText]           = useState('');
   const [search, setSearch]       = useState('');
   const [sending, setSending]     = useState(false);
+  const [actioning, setActioning] = useState(false);
   const [tab, setTab]             = useState<'all' | 'unread'>('all');
   // Persist read timestamps in localStorage: { contactId: ISO timestamp }
   const [readAt, setReadAt] = useState<Record<number, string>>(() => {
@@ -284,7 +295,7 @@ export default function InboxPage() {
   const chatRef                     = useRef<HTMLDivElement>(null);
 
   const loadContacts = useCallback(() => {
-    apiFetch('/api/contacts?limit=200').then((r) => setContacts(r.data?.data || []));
+    apiFetch('/api/contacts?limit=200&chatStatus=active').then((r) => setContacts(r.data?.data || []));
   }, []);
 
   useEffect(() => {
@@ -331,6 +342,37 @@ export default function InboxPage() {
     } finally {
       setSending(false);
     }
+  }
+
+  async function intervene() {
+    if (!selected || actioning) return;
+    setActioning(true);
+    try {
+      await apiFetch(`/api/contacts/${selected.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ chat_status: 'intervened' }),
+      });
+      const updated = { ...selected, chat_status: 'intervened' as const };
+      setSelected(updated);
+      setContacts((prev) => prev.map((c) => c.id === selected.id ? updated : c));
+    } catch { toast.error('Failed to intervene'); }
+    finally { setActioning(false); }
+  }
+
+  async function resolve() {
+    if (!selected || actioning) return;
+    setActioning(true);
+    try {
+      await apiFetch(`/api/contacts/${selected.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ chat_status: 'resolved' }),
+      });
+      setContacts((prev) => prev.filter((c) => c.id !== selected.id));
+      setSelected(null);
+      setMessages([]);
+      toast.success('Chat resolved and moved to History');
+    } catch { toast.error('Failed to resolve'); }
+    finally { setActioning(false); }
   }
 
   function scrollToReplied(wamid: string) {
@@ -447,13 +489,20 @@ export default function InboxPage() {
         <div className="flex-1 flex flex-col min-w-0">
           {/* Chat header */}
           <div className="px-4 py-3 border-b border-gray-200 flex items-center gap-3 bg-white">
-            <div className="w-9 h-9 rounded-full bg-whatsapp-green text-white flex items-center justify-center font-bold text-sm">
+            <div className="w-9 h-9 rounded-full bg-whatsapp-green text-white flex items-center justify-center font-bold text-sm flex-shrink-0">
               {(selected.name || selected.phone).charAt(0).toUpperCase()}
             </div>
-            <div>
+            <div className="flex-1 min-w-0">
               <p className="font-semibold text-sm text-gray-900">{selected.name || selected.phone}</p>
               <p className="text-xs text-gray-400">+{selected.phone}</p>
             </div>
+            {selected.chat_status === 'intervened' && (
+              <button onClick={resolve} disabled={actioning}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold rounded-lg transition-colors disabled:opacity-50">
+                {actioning ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle size={12} />}
+                Resolve
+              </button>
+            )}
           </div>
 
           {/* Messages */}
@@ -526,18 +575,28 @@ export default function InboxPage() {
             <div ref={bottomRef} />
           </div>
 
-          {/* Input */}
-          <div className="p-3 border-t border-gray-200 bg-white flex gap-2 items-center">
-            <input value={text}
-              onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-              placeholder="Type a message..."
-              className="input flex-1 text-sm" />
-            <button onClick={sendMessage} disabled={sending || !text.trim()}
-              className="btn-primary px-4 py-2.5 disabled:opacity-50">
-              <Send size={16} />
-            </button>
-          </div>
+          {/* Input / Intervene */}
+          {selected.chat_status === 'intervened' ? (
+            <div className="p-3 border-t border-gray-200 bg-white flex gap-2 items-center">
+              <input value={text}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
+                placeholder="Type a message..."
+                className="input flex-1 text-sm" />
+              <button onClick={sendMessage} disabled={sending || !text.trim()}
+                className="btn-primary px-4 py-2.5 disabled:opacity-50">
+                {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+              </button>
+            </div>
+          ) : (
+            <div className="p-4 border-t border-gray-200 bg-gray-50 flex items-center justify-center">
+              <button onClick={intervene} disabled={actioning}
+                className="flex items-center gap-2 px-6 py-2.5 bg-whatsapp-green hover:bg-green-600 text-white font-semibold rounded-full text-sm transition-colors disabled:opacity-50 shadow-sm">
+                {actioning ? <Loader2 size={15} className="animate-spin" /> : <UserCheck size={15} />}
+                Intervene
+              </button>
+            </div>
+          )}
         </div>
       ) : (
         <div className="flex-1 flex items-center justify-center text-gray-400 bg-gray-50">

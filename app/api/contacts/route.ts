@@ -13,8 +13,9 @@ export async function GET(req: NextRequest) {
     const payload = requireAuth(req);
     const sp      = new URL(req.url).searchParams;
     const { limit, offset, page } = getPagination(sp);
-    const search  = sp.get('search') || '';
-    const status  = sp.get('status') || '';
+    const search     = sp.get('search') || '';
+    const status     = sp.get('status') || '';
+    const chatStatus = sp.get('chatStatus') || '';
 
     let sql    = `
       SELECT c.*,
@@ -40,6 +41,13 @@ export async function GET(req: NextRequest) {
       sql      += ' AND c.status = ?';
       countSql += ' AND status = ?';
       params.push(status);
+    }
+    if (chatStatus === 'resolved') {
+      sql      += " AND c.chat_status = 'resolved'";
+      countSql += " AND chat_status = 'resolved'";
+    } else if (chatStatus === 'active') {
+      sql      += " AND (c.chat_status IS NULL OR c.chat_status != 'resolved')";
+      countSql += " AND (chat_status IS NULL OR chat_status != 'resolved')";
     }
 
     sql += ' ORDER BY last_message_at DESC, c.created_at DESC LIMIT ? OFFSET ?';

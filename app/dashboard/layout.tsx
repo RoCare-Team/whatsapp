@@ -4,12 +4,13 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import {
   LayoutDashboard, MessageSquare, Users, Megaphone,
-  FileText, Bot, BarChart3, Settings, LogOut, Menu, X
+  FileText, Bot, BarChart3, Settings, LogOut, Menu, X, History
 } from 'lucide-react';
 
 const nav = [
   { label: 'Dashboard',  href: '/dashboard',   icon: LayoutDashboard },
   { label: 'Inbox',      href: '/inbox',        icon: MessageSquare },
+  { label: 'History',    href: '/history',      icon: History },
   { label: 'Contacts',   href: '/contacts',     icon: Users },
   { label: 'Campaigns',  href: '/campaigns',    icon: Megaphone },
   { label: 'Templates',  href: '/templates',    icon: FileText },
