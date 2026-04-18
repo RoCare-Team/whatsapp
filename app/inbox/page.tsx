@@ -319,9 +319,10 @@ export default function InboxPage() {
     });
   }, [templates.length]);
 
-  // 24h session: check if last inbound message is within 24 hours
+  // 24h session: open if user messaged us OR we sent a template within 24h
   const isSessionOpen = messages.some((m) =>
-    m.direction === 'inbound' && Date.now() - new Date(m.created_at).getTime() < 24 * 60 * 60 * 1000
+    Date.now() - new Date(m.created_at).getTime() < 24 * 60 * 60 * 1000 &&
+    (m.direction === 'inbound' || (m.direction === 'outbound' && m.type === 'template'))
   );
 
   function selectContact(c: Contact) {
