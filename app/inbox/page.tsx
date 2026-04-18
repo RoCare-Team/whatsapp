@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { apiFetch } from '@/hooks/useApi';
-import { Send, Search, FileText, Image, FileVideo, File, ChevronDown, ChevronUp, Download, Music, MapPin, User, UserCheck, CheckCircle, Loader2 } from 'lucide-react';
+import { Send, Search, FileText, Image, FileVideo, File, ChevronDown, ChevronUp, Download, Music, MapPin, User, UserCheck, CheckCircle, Loader2, LayoutTemplate, X, Clock } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Contact, Message } from '@/types';
 
@@ -277,14 +277,17 @@ function ProfilePanel({ contact, msgCount }: { contact: Contact; msgCount: numbe
 
 // ── Main Inbox Page ───────────────────────────────────────────
 export default function InboxPage() {
-  const [contacts, setContacts]   = useState<Contact[]>([]);
-  const [selected, setSelected]   = useState<Contact | null>(null);
-  const [messages, setMessages]   = useState<Message[]>([]);
-  const [text, setText]           = useState('');
-  const [search, setSearch]       = useState('');
-  const [sending, setSending]     = useState(false);
-  const [actioning, setActioning] = useState(false);
-  const [tab, setTab]             = useState<'all' | 'unread'>('all');
+  const [contacts, setContacts]     = useState<Contact[]>([]);
+  const [selected, setSelected]     = useState<Contact | null>(null);
+  const [messages, setMessages]     = useState<Message[]>([]);
+  const [text, setText]             = useState('');
+  const [search, setSearch]         = useState('');
+  const [sending, setSending]       = useState(false);
+  const [actioning, setActioning]   = useState(false);
+  const [tab, setTab]               = useState<'all' | 'unread'>('all');
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [templates, setTemplates]   = useState<{ id: number; name: string; language: string; body_text: string; status: string }[]>([]);
+  const [sendingTpl, setSendingTpl] = useState<number | null>(null);
   // Persist read timestamps in localStorage: { contactId: ISO timestamp }
   const [readAt, setReadAt] = useState<Record<number, string>>(() => {
     try {
@@ -307,6 +310,19 @@ export default function InboxPage() {
   const loadMessages = useCallback((contactId: number) => {
     apiFetch(`/api/messages?contactId=${contactId}&limit=80`).then((r) => setMessages(r.data || []));
   }, []);
+
+  const loadTemplates = useCallback(() => {
+    if (templates.length > 0) return;
+    apiFetch('/api/templates').then((r) => {
+      const approved = (r.data || []).filter((t: { status: string }) => t.status === 'APPROVED');
+      setTemplates(approved);
+    });
+  }, [templates.length]);
+
+  // 24h session: check if last inbound message is within 24 hours
+  const isSessionOpen = messages.some((m) =>
+    m.direction === 'inbound' && Date.now() - new Date(m.created_at).getTime() < 24 * 60 * 60 * 1000
+  );
 
   function selectContact(c: Contact) {
     setSelected(c);
@@ -341,6 +357,24 @@ export default function InboxPage() {
       toast.error('Failed: ' + (err instanceof Error ? err.message : 'error'));
     } finally {
       setSending(false);
+    }
+  }
+
+  async function sendTemplate(templateName: string, language: string, tplId: number) {
+    if (!selected) return;
+    setSendingTpl(tplId);
+    try {
+      await apiFetch('/api/send-message', {
+        method: 'POST',
+        body: JSON.stringify({ contactId: selected.id, type: 'template', templateName, language }),
+      });
+      setShowTemplates(false);
+      loadMessages(selected.id);
+      toast.success('Template sent!');
+    } catch (err) {
+      toast.error('Failed: ' + (err instanceof Error ? err.message : 'error'));
+    } finally {
+      setSendingTpl(null);
     }
   }
 
@@ -575,19 +609,65 @@ export default function InboxPage() {
             <div ref={bottomRef} />
           </div>
 
+          {/* Template picker panel */}
+          {showTemplates && (
+            <div className="border-t border-gray-200 bg-white">
+              <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100">
+                <p className="text-sm font-semibold text-gray-700">Select a Template</p>
+                <button onClick={() => setShowTemplates(false)}><X size={16} className="text-gray-400 hover:text-gray-600" /></button>
+              </div>
+              <div className="max-h-52 overflow-y-auto divide-y divide-gray-50">
+                {templates.length === 0
+                  ? <p className="text-center text-xs text-gray-400 py-6">No approved templates</p>
+                  : templates.map((t) => (
+                    <button key={t.id} onClick={() => sendTemplate(t.name, t.language, t.id)}
+                      disabled={sendingTpl === t.id}
+                      className="w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors disabled:opacity-50">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-semibold text-gray-800">{t.name}</p>
+                        {sendingTpl === t.id
+                          ? <Loader2 size={14} className="animate-spin text-gray-400" />
+                          : <Send size={13} className="text-gray-300" />}
+                      </div>
+                      <p className="text-xs text-gray-400 mt-0.5 truncate">{t.body_text}</p>
+                    </button>
+                  ))}
+              </div>
+            </div>
+          )}
+
           {/* Input / Intervene */}
           {selected.chat_status === 'intervened' ? (
-            <div className="p-3 border-t border-gray-200 bg-white flex gap-2 items-center">
-              <input value={text}
-                onChange={(e) => setText(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-                placeholder="Type a message..."
-                className="input flex-1 text-sm" />
-              <button onClick={sendMessage} disabled={sending || !text.trim()}
-                className="btn-primary px-4 py-2.5 disabled:opacity-50">
-                {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-              </button>
-            </div>
+            isSessionOpen ? (
+              <div className="p-3 border-t border-gray-200 bg-white flex gap-2 items-center">
+                <input value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
+                  placeholder="Type a message..."
+                  className="input flex-1 text-sm" />
+                <button onClick={() => { loadTemplates(); setShowTemplates((v) => !v); }}
+                  title="Send template"
+                  className="p-2.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-500 transition-colors">
+                  <LayoutTemplate size={16} />
+                </button>
+                <button onClick={sendMessage} disabled={sending || !text.trim()}
+                  className="btn-primary px-4 py-2.5 disabled:opacity-50">
+                  {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                </button>
+              </div>
+            ) : (
+              <div className="border-t border-gray-200 bg-amber-50 p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <Clock size={14} className="text-amber-500" />
+                  <p className="text-xs text-amber-700 font-medium">24-hour session expired — send a template to reopen</p>
+                </div>
+                <button onClick={() => { loadTemplates(); setShowTemplates((v) => !v); }}
+                  className="w-full flex items-center justify-center gap-2 py-2 bg-whatsapp-green hover:bg-green-600 text-white text-sm font-semibold rounded-lg transition-colors">
+                  <LayoutTemplate size={15} />
+                  Send Template
+                </button>
+              </div>
+            )
           ) : (
             <div className="p-4 border-t border-gray-200 bg-gray-50 flex items-center justify-center">
               <button onClick={intervene} disabled={actioning}
