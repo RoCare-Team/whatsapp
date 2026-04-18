@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { apiFetch } from '@/hooks/useApi';
-import { Send, Search, FileText, Image, FileVideo, File, ChevronDown, ChevronUp } from 'lucide-react';
+import { Send, Search, FileText, Image, FileVideo, File, ChevronDown, ChevronUp, Download, Music } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Contact, Message } from '@/types';
 
@@ -21,6 +21,73 @@ function parseTemplateContent(content: string): TemplateContent | null {
     if (p.__type === 'template') return p as TemplateContent;
   } catch { /**/ }
   return null;
+}
+
+// ── Media message types ───────────────────────────────────────
+interface MediaContent {
+  __type: 'media';
+  media_id: string;
+  mime_type?: string;
+  filename?: string;
+  caption?: string;
+  workspace_id: number;
+}
+function parseMediaContent(content: string): MediaContent | null {
+  try {
+    const p = JSON.parse(content);
+    if (p.__type === 'media' && p.media_id) return p as MediaContent;
+  } catch { /**/ }
+  return null;
+}
+
+function MediaBubble({ data, msgType }: { data: MediaContent; msgType: string }) {
+  const src = `/api/media/${data.media_id}?workspaceId=${data.workspace_id}`;
+  const isImage = msgType === 'image';
+  const isAudio = msgType === 'audio';
+  const isVideo = msgType === 'video';
+  const isDoc   = msgType === 'document';
+
+  return (
+    <div className="max-w-xs">
+      {isImage && (
+        <img
+          src={src}
+          alt={data.caption || 'Image'}
+          className="rounded-xl max-w-full max-h-64 object-cover"
+          loading="lazy"
+        />
+      )}
+      {isVideo && (
+        <video
+          src={src}
+          controls
+          className="rounded-xl max-w-full max-h-64"
+        />
+      )}
+      {isAudio && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-white/50 rounded-xl">
+          <Music size={16} className="text-gray-500 flex-shrink-0" />
+          <audio src={src} controls className="h-8 w-48" />
+        </div>
+      )}
+      {isDoc && (
+        <a
+          href={src}
+          download={data.filename || 'document'}
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center gap-2 px-3 py-2 bg-white/50 rounded-xl hover:bg-white/80 transition-colors"
+        >
+          <FileText size={16} className="text-gray-500 flex-shrink-0" />
+          <span className="text-sm text-gray-700 truncate max-w-[180px]">{data.filename || 'Document'}</span>
+          <Download size={14} className="text-gray-400 flex-shrink-0 ml-auto" />
+        </a>
+      )}
+      {data.caption && (
+        <p className="text-xs text-gray-600 mt-1 px-1 break-words">{data.caption}</p>
+      )}
+    </div>
+  );
 }
 
 // ── WhatsApp template bubble ──────────────────────────────────
@@ -338,6 +405,7 @@ export default function InboxPage() {
             style={{ backgroundImage: 'radial-gradient(circle, #d4d4d4 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
             {messages.map((m) => {
               const tpl        = m.type === 'template' ? parseTemplateContent(m.content) : null;
+              const media      = ['image','audio','video','document'].includes(m.type) ? parseMediaContent(m.content) : null;
               const repliedMsg = m.replied_to_wamid ? messages.find((x) => x.wamid === m.replied_to_wamid) : null;
               const timeStr    = new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -374,7 +442,11 @@ export default function InboxPage() {
                       })()}
 
                       <div className="px-3 py-2">
-                        <p className="break-words whitespace-pre-wrap leading-relaxed">{m.content}</p>
+                        {media ? (
+                          <MediaBubble data={media} msgType={m.type} />
+                        ) : (
+                          <p className="break-words whitespace-pre-wrap leading-relaxed">{m.content}</p>
+                        )}
                         <p className={`text-xs mt-1 flex items-center gap-0.5 ${m.direction === 'outbound' ? 'justify-end text-gray-400' : 'text-gray-300'}`}>
                           {timeStr}
                           {m.direction === 'outbound' && (
