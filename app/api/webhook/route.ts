@@ -98,6 +98,11 @@ export async function POST(req: NextRequest) {
       );
     } else {
       contactId = contact[0].id as number;
+      // If resolved contact messages again → reopen to active inbox
+      await execute(
+        "UPDATE contacts SET chat_status = 'open', intervened_by = NULL WHERE id = ? AND chat_status = 'resolved'",
+        [contactId]
+      );
     }
 
     // Extract readable content based on message type
